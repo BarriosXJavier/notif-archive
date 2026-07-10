@@ -1,9 +1,11 @@
 # Build outputs
 notif-archiver
 src/*.o
+/src/*.d
+/build
 test_parser
 
-# Editor / OS noise
+# Editor /
 .DS_Store
 Thumbs.db
 .zed/
@@ -11,3 +13,5 @@ Thumbs.db
 
 # Logs
 *.log
+.env
+.env*.
