@@ -15,6 +15,80 @@ For each configured app:
 
 The resulting archive is organized by app/group name and date.
 
+## Where this runs
+
+This project is intended for a **Linux desktop user session**.
+
+It expects all of the following to be true:
+
+- the machine is running Linux,
+- the desktop environment exposes a **session D-Bus**,
+- apps send notifications through `org.freedesktop.Notifications.Notify`,
+- the session is graphical (`X11` or `Wayland`), and
+- a screenshot tool is available in `PATH`.
+
+Typical good fits:
+
+- a personal Linux workstation or laptop,
+- a desktop session managed with `systemd --user`,
+- chat or messaging apps that already show normal desktop notifications.
+
+Typical bad fits:
+
+- macOS or Windows,
+- headless servers,
+- containers without a graphical session bus,
+- environments where notifications are not sent via the standard freedesktop notification interface.
+
+## What must already be installed
+
+### Build-time requirements
+
+To compile the project, the system should already have:
+
+- `gcc`
+- `make`
+- `pkg-config`
+- `libsystemd` development headers and libraries
+
+### Runtime requirements
+
+To run the archiver successfully, the system should already have:
+
+- a Linux desktop session with access to the session bus,
+- `systemd --user` if you want to run it via the included service unit,
+- at least one supported screenshot tool installed,
+- the target apps configured in `notif-archiver.conf` and sending standard desktop notifications.
+
+Supported screenshot tools:
+
+- Wayland: `grim` or `gnome-screenshot`
+- X11: `scrot` or ImageMagick `import`
+
+### Package examples
+
+Package names vary by distribution, but these are the kinds of packages users should expect to install.
+
+**Debian / Ubuntu**
+
+```sh
+sudo apt install build-essential pkg-config libsystemd-dev grim scrot gnome-screenshot imagemagick
+```
+
+**Fedora**
+
+```sh
+sudo dnf install gcc make pkgconf-pkg-config systemd-devel grim scrot gnome-screenshot ImageMagick
+```
+
+**Arch Linux**
+
+```sh
+sudo pacman -S base-devel pkgconf systemd grim scrot gnome-screenshot imagemagick
+```
+
+Users do **not** need every screenshot tool above; they only need at least one tool that matches their session type.
+
 ## Build
 
 This project uses `make` and depends on `libsystemd` for `sd-bus`.
@@ -24,13 +98,6 @@ make
 ```
 
 The main binary is written to `./notif-archiver`.
-
-## Runtime dependencies
-
-- `libsystemd` development package for compilation
-- A screenshot tool available on the target desktop session:
-  - Wayland: `grim` or `gnome-screenshot`
-  - X11: `scrot` or ImageMagick `import`
 
 ## Running
 
