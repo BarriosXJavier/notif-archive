@@ -1,0 +1,13 @@
+# Build outputs
+notif-archiver
+src/*.o
+test_parser
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+.zed/
+.vscode/
+
+# Logs
+*.log
