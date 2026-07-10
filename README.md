@@ -87,7 +87,7 @@ sudo dnf install gcc make pkgconf-pkg-config systemd-devel grim scrot gnome-scre
 sudo pacman -S base-devel pkgconf systemd grim scrot gnome-screenshot imagemagick
 ```
 
-Users do **not** need every screenshot tool above; they only need at least one tool that matches their session type.
+You do **not** need every screenshot tool above; you only need at least one tool that matches the session type.
 
 ## Build
 
