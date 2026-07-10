@@ -25,7 +25,7 @@ install: $(BIN)
 	install -Dm644 config/notif-archiver.conf $(HOME)/.config/notif-archiver/notif-archiver.conf
 	install -Dm644 systemd/notif-archiver.service $(HOME)/.config/systemd/user/notif-archiver.service
 	systemctl --user daemon-reload
-	@echo "Run: systemctl --user enable --now notif-archive.service"
+	@echo "Run: systemctl --user enable --now notif-archiver.service"
 
 clean:
 	rm -f $(OBJ) $(BIN) test_parser

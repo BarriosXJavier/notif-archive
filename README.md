@@ -46,6 +46,37 @@ You can also pass an explicit config path:
 ./notif-archiver /path/to/notif-archiver.conf
 ```
 
+## Installation
+
+The repository now includes:
+
+- `config/notif-archiver.conf` — sample configuration file
+- `systemd/notif-archiver.service` — user service unit
+
+To install them into your home directory using the provided `Makefile`:
+
+```sh
+make install
+```
+
+This installs:
+
+- `notif-archiver` to `~/bin/notif-archiver`
+- the sample config to `~/.config/notif-archiver/notif-archiver.conf`
+- the service unit to `~/.config/systemd/user/notif-archiver.service`
+
+Then enable the service:
+
+```sh
+systemctl --user enable --now notif-archiver.service
+```
+
+To inspect logs:
+
+```sh
+journalctl --user -u notif-archiver -f
+```
+
 ## Configuration
 
 The config parser supports simple `key=value` entries plus an `[apps]` section.

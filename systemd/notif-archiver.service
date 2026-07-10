@@ -1,0 +1,14 @@
+[Unit]
+Description=Archive selected desktop notifications and screenshots
+After=graphical-session.target
+Wants=graphical-session.target
+
+[Service]
+Type=simple
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus
+ExecStart=%h/bin/notif-archiver %h/.config/notif-archiver/notif-archiver.conf
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target
