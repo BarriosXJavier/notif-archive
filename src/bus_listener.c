@@ -13,6 +13,50 @@
 
 static const config_t *g_cfg;
 
+// Attempts to read the "desktop-entry" hint from a Notify() message's
+// hints dictionary (the 6th field, a{sv}). Must be called with the
+// message cursor positioned right after body -- i.e. right after the
+// "susss" read below, before anything else has consumed the actions
+// array. Returns 1 and fills out_entry if found, 0 otherwise. Never
+// fatal: most apps simply don't set this hint, and that's normal.
+static int read_desktop_entry_hint(sd_bus_message *m, char *out_entry, size_t out_sz) {
+    int r;
+
+    // Notify()'s signature is susssasa{sv}i -- actions (array of
+    // strings) comes before hints, so skip over it first.
+    r = sd_bus_message_skip(m, "as");
+    if (r < 0) return 0;
+
+    r = sd_bus_message_enter_container(m, SD_BUS_TYPE_ARRAY, "{sv}");
+    if (r < 0) return 0;
+
+    int found = 0;
+    while ((r = sd_bus_message_enter_container(m, SD_BUS_TYPE_DICT_ENTRY, "sv")) > 0) {
+        const char *key = NULL;
+        r = sd_bus_message_read(m, "s", &key);
+        if (r < 0) {
+            sd_bus_message_exit_container(m);
+            break;
+        }
+
+        if (!found && key && strcmp(key, "desktop-entry") == 0) {
+            const char *val = NULL;
+            r = sd_bus_message_read(m, "v", "s", &val);
+            if (r >= 0 && val) {
+                snprintf(out_entry, out_sz, "%s", val);
+                found = 1;
+            }
+        } else {
+            sd_bus_message_skip(m, "v"); // not the hint we want, skip it
+        }
+
+        sd_bus_message_exit_container(m); // dict entry
+    }
+    sd_bus_message_exit_container(m); // array
+
+    return found;
+}
+
 static int on_message(sd_bus_message *m, void *userdata, sd_bus_error *ret_error) {
     (void)userdata; (void)ret_error;
 
@@ -33,9 +77,29 @@ static int on_message(sd_bus_message *m, void *userdata, sd_bus_error *ret_error
     }
 
     char group_name[MAX_APP_NAME];
-    if (!config_resolve_group(g_cfg, app_name, group_name, sizeof(group_name))) return 1;
+    int matched = config_resolve_group(g_cfg, app_name, group_name, sizeof(group_name));
 
-    log_msg(LOG_INFO, "captured notification from %s (group=%s)", app_name, group_name);
+    char resolved_source[MAX_APP_NAME];
+    snprintf(resolved_source, sizeof(resolved_source), "%s", app_name);
+
+    if (!matched) {
+        // app_name alone didn't match a configured entry -- sandboxed
+        // apps relayed through xdg-desktop-portal (common with
+        // Flatpak) often send an empty or generic app_name and
+        // identify themselves via a "desktop-entry" hint instead.
+        char desktop_entry[MAX_APP_NAME];
+        if (read_desktop_entry_hint(m, desktop_entry, sizeof(desktop_entry))) {
+            log_msg(LOG_DEBUG, "app_name empty, desktop-entry hint='%s'", desktop_entry);
+            if (config_resolve_group(g_cfg, desktop_entry, group_name, sizeof(group_name))) {
+                matched = 1;
+                snprintf(resolved_source, sizeof(resolved_source), "%s", desktop_entry);
+            }
+        }
+    }
+
+    if (!matched) return 1;
+
+    log_msg(LOG_INFO, "captured notification from %s (group=%s)", resolved_source, group_name);
 
     char dir[MAX_PATH_LEN];
     storage_build_dir(g_cfg, group_name, dir, sizeof(dir));
@@ -47,7 +111,7 @@ static int on_message(sd_bus_message *m, void *userdata, sd_bus_error *ret_error
     parsed_message_t msg;
     parser_split(summary, body, &msg);
 
-    storage_write_entry(dir, group_name, app_name, &msg, got_shot ? shot_path : NULL);
+    storage_write_entry(dir, group_name, resolved_source, &msg, got_shot ? shot_path : NULL);
 
     return 1;
 }
