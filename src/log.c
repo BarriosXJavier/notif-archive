@@ -17,11 +17,14 @@ static const char *level_str(log_level_t l) {
 }
 
 void log_msg(log_level_t level, const char *fmt, ...) {
-    char ts[32];
+    char ts[32] = "unknown-time";
     time_t now = time(NULL);
     struct tm tm_now;
-    localtime_r(&now, &tm_now); // thread-safe variant, good habit even single-threaded
-    strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", &tm_now);
+
+    if (!fmt)
+        return;
+    if (localtime_r(&now, &tm_now))
+        strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", &tm_now);
 
     // WARN/ERROR go to stderr so `2>` redirection and journald severity
     // tagging both work correctly; DEBUG/INFO go to stdout.

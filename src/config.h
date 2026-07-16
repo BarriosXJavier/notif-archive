@@ -5,13 +5,8 @@
 
 #define MAX_APPS 32
 #define MAX_APP_NAME 64
-#define MAX_PATH_LEN 512
+#define MAX_PATH_LEN 4096
 
-// One watched D-Bus app_name, mapped to a canonical "group" name used
-// for the archive folder. Multiple app_name values (e.g. "WhatsApp",
-// "whatsapp-for-linux", "zapzap") can all map to the same group
-// ("WhatsApp"), so notifications/screenshots from any of them land in
-// one shared folder instead of being split across several.
 typedef struct {
     char app_name[MAX_APP_NAME];
     char group_name[MAX_APP_NAME];
@@ -21,15 +16,18 @@ typedef struct {
     char archive_root[MAX_PATH_LEN];
     char session_type[16];
     int screenshot_delay_ms;
+    int screenshot_timeout_ms;
     app_mapping_t apps[MAX_APPS];
     int app_count;
 } config_t;
 
+// Returns 0 on success and -1 if the file cannot be read or contains an
+// invalid/truncated value. Duplicate app names are ignored after the first.
 int config_load(const char *path, config_t *out);
 
-// Looks up app_name in cfg's configured mappings. Returns 1 and fills
-// out_group if found, 0 if app_name isn't one we're watching.
+// Resolves the first configured mapping for app_name. Returns 1 on success,
+// 0 when no mapping exists, and -1 when the output buffer is too small.
 int config_resolve_group(const config_t *cfg, const char *app_name,
-                          char *out_group, size_t out_group_sz);
+                         char *out_group, size_t out_group_sz);
 
 #endif

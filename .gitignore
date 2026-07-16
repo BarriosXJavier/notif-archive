@@ -3,8 +3,14 @@ notif-archiver
 src/*.o
 /src/*.d
 /build
-test_parser
+/test_parser
+/test_config
+/test_storage
+/test_screenshot
 /test_parser.d
+/test_config.d
+/test_storage.d
+/test_screenshot.d
 
 # Editor /
 .DS_Store

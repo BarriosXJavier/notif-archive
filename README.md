@@ -180,7 +180,8 @@ Recognized top-level keys:
 
 - `archive_root` — base directory where archives are stored
 - `session_type_override` — override detected session type (`x11` or `wayland`)
-- `screenshot_delay_ms` — delay before taking the screenshot
+- `screenshot_delay_ms` — delay before taking the screenshot (0–600000)
+- `screenshot_timeout_ms` — maximum screenshot-tool runtime before it is killed and reaped (100–600000; default 10000)
 
 The `[apps]` section defines which notification `app_name` values should be archived.
 
@@ -196,6 +197,7 @@ Example:
 ```ini
 archive_root=~/notif_archive
 screenshot_delay_ms=300
+screenshot_timeout_ms=10000
 
 [apps]
 WhatsApp
@@ -224,10 +226,13 @@ Each line in `log.jsonl` is a standalone JSON object with fields such as:
 - `timestamp`
 - `app`
 - `source_app`
+- `replaces_id` (nonzero means the sender updated an existing desktop notification; the archive remains append-only)
 - `group`
 - `sender`
 - `content`
 - `screenshot`
+
+Archive directories are created with mode `0700` and JSONL files with mode `0600`. Group names are percent-encoded for path safety; the original group remains unchanged in JSON.
 
 ## Core components
 
@@ -288,4 +293,8 @@ main -> config_load -> bus_listener_run
 
 - The program only archives notifications whose `app_name` appears in the `[apps]` section.
 - The archive folder name uses the canonical group name, not necessarily the raw source app name.
-- If screenshot capture fails, the notification is still logged with `"screenshot": null`.
+- If screenshot capture fails or times out, the notification is still logged with `"screenshot": null`.
+- Screenshot capture is synchronous. This preserves record order but bursts can delay later captures; a bounded asynchronous worker queue is a planned improvement.
+- Screenshot filenames include seconds, nanoseconds, and a process-local sequence, so rapid notifications cannot overwrite each other.
+- `SIGINT` and `SIGTERM` stop the listener cleanly. An in-flight screenshot child is killed and reaped if the wait is interrupted.
+- The archive is append-only and has no built-in rotation. Use a separate retention/rotation policy if archive growth is a concern.
