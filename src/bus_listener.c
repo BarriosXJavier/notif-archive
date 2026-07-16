@@ -18,9 +18,9 @@ static int on_message(sd_bus_message *m, void *userdata, sd_bus_error *ret_error
 
     const char *iface = sd_bus_message_get_interface(m);
     const char *member = sd_bus_message_get_member(m);
-    if (!iface || !member) return 0;
-    if (strcmp(iface, "org.freedesktop.Notifications") != 0) return 0;
-    if (strcmp(member, "Notify") != 0) return 0;
+    if (!iface || !member) return 1;
+    if (strcmp(iface, "org.freedesktop.Notifications") != 0) return 1;
+    if (strcmp(member, "Notify") != 0) return 1;
 
     const char *app_name, *app_icon, *summary, *body;
     uint32_t replaces_id;
@@ -29,11 +29,11 @@ static int on_message(sd_bus_message *m, void *userdata, sd_bus_error *ret_error
                                  &app_icon, &summary, &body);
     if (r < 0) {
         log_msg(LOG_DEBUG, "skipped unparseable Notify call (r=%d)", r);
-        return 0;
+        return 1;
     }
 
     char group_name[MAX_APP_NAME];
-    if (!config_resolve_group(g_cfg, app_name, group_name, sizeof(group_name))) return 0;
+    if (!config_resolve_group(g_cfg, app_name, group_name, sizeof(group_name))) return 1;
 
     log_msg(LOG_INFO, "captured notification from %s (group=%s)", app_name, group_name);
 
@@ -49,8 +49,9 @@ static int on_message(sd_bus_message *m, void *userdata, sd_bus_error *ret_error
 
     storage_write_entry(dir, group_name, app_name, &msg, got_shot ? shot_path : NULL);
 
-    return 0;
+    return 1;
 }
+
 static int resolve_session_address(char *out, size_t out_sz) {
   const char *env = getenv("DBUS_SESSION_BUS_ADDRESS");
   if (env && env[0] != '\0') {
