@@ -61,10 +61,50 @@ static void test_invalid_numeric_value_fails(void) {
     assert(unlink(path) == 0);
 }
 
+static void test_catch_all_is_separate_from_exact_mappings(void) {
+    char path[] = "/tmp/notif-config-XXXXXX";
+    char group[MAX_APP_NAME];
+    config_t cfg;
+    int fd = mkstemp(path);
+
+    assert(fd >= 0);
+    assert(close(fd) == 0);
+    write_text_file(path,
+                    "[apps]\n"
+                    "Known = Sorted\n"
+                    "* = Unsorted\n");
+    assert(config_load(path, &cfg) == 0);
+    assert(cfg.app_count == 1);
+    assert(cfg.has_catch_all == 1);
+    assert(config_resolve_group(&cfg, "Known", group, sizeof(group)) == 1);
+    assert(strcmp(group, "Sorted") == 0);
+    assert(config_resolve_group(&cfg, "Unknown", group, sizeof(group)) == 0);
+    assert(config_resolve_catch_all(&cfg, group, sizeof(group)) == 1);
+    assert(strcmp(group, "Unsorted") == 0);
+    assert(unlink(path) == 0);
+}
+
+static void test_duplicate_catch_all_is_rejected(void) {
+    char path[] = "/tmp/notif-config-XXXXXX";
+    config_t cfg;
+    int fd = mkstemp(path);
+
+    assert(fd >= 0);
+    assert(close(fd) == 0);
+    write_text_file(path,
+                    "[apps]\n"
+                    "* = First\n"
+                    "* = Second\n");
+    assert(config_load(path, &cfg) == -1);
+    assert(cfg.has_catch_all == 1);
+    assert(strcmp(cfg.catch_all_group, "First") == 0);
+    assert(unlink(path) == 0);
+}
+
 static void test_overlong_mapping_is_rejected_not_truncated(void) {
     char path[] = "/tmp/notif-config-XXXXXX";
-    char long_name[100];
-    char text[160];
+    char long_name[300];
+    char text[360];
     config_t cfg;
     int fd = mkstemp(path);
 
@@ -83,6 +123,8 @@ int main(void) {
     test_crlf_and_first_duplicate_wins();
     test_missing_file_fails();
     test_invalid_numeric_value_fails();
+    test_catch_all_is_separate_from_exact_mappings();
+    test_duplicate_catch_all_is_rejected();
     test_overlong_mapping_is_rejected_not_truncated();
     printf("config tests passed\n");
     return 0;

@@ -113,6 +113,24 @@ You can also pass an explicit config path:
 ./notif-archiver /path/to/notif-archiver.conf
 ```
 
+To discover notification identities without loading config, taking screenshots,
+or writing archives:
+
+```sh
+./notif-archiver --list-apps
+```
+
+Trigger notifications from the apps you want to identify. Each distinct pair is
+logged once:
+
+```text
+DISCOVER app_name='' desktop-entry='com.rtosta.zapzap'
+DISCOVER app_name='Google Chrome' desktop-entry='google-chrome'
+```
+
+Press `Ctrl-C` when finished, then add the observed `app_name` or
+`desktop-entry` values to `[apps]`.
+
 ## Installation
 
 The repository now includes:
@@ -189,8 +207,13 @@ Supported forms:
 
 - `WhatsApp`
 - `whatsapp-for-linux = WhatsApp`
+- `* = Unsorted`
 
 The second form maps multiple source application names into one canonical archive group.
+The optional `*` mapping captures only notifications that match neither an exact
+`app_name` nor an exact `desktop-entry`. Only one catch-all is allowed. Every
+catch-all match emits a warning containing both observed identities so it can be
+replaced with an explicit mapping.
 
 Example:
 
@@ -203,7 +226,29 @@ screenshot_timeout_ms=10000
 WhatsApp
 Telegram Desktop = Telegram
 zapzap = WhatsApp
+# * = Unsorted
 ```
+
+## Notification source discovery
+
+For Flatpak applications, list installed application IDs first:
+
+```sh
+flatpak list --app --columns=application,name
+```
+
+Run `notif-archiver --list-apps`, trigger one notification, and compare the
+reported `desktop-entry` with the Flatpak ID. The observed D-Bus value is
+authoritative; add it to `[apps]` exactly as logged.
+
+Use the same procedure for browser-installed PWAs. A PWA may receive a unique
+generated desktop entry, depending on the browser and installation.
+
+Notifications from ordinary browser tabs generally expose only the browser's
+identity (`Google Chrome`/`google-chrome`, `Firefox`/`firefox`). The originating
+site is not a stable D-Bus application identity, so separate archival by tab or
+site is intentionally unsupported. Install important sites as PWAs when they
+need separate groups.
 
 ## Archive layout
 
@@ -291,7 +336,7 @@ main -> config_load -> bus_listener_run
 
 ## Notes
 
-- The program only archives notifications whose `app_name` appears in the `[apps]` section.
+- Exact `app_name` mappings take precedence over exact `desktop-entry` mappings; the optional `*` catch-all runs last.
 - The archive folder name uses the canonical group name, not necessarily the raw source app name.
 - If screenshot capture fails or times out, the notification is still logged with `"screenshot": null`.
 - Screenshot capture is synchronous. This preserves record order but bursts can delay later captures; a bounded asynchronous worker queue is a planned improvement.

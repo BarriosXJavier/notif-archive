@@ -213,6 +213,19 @@ int config_load(const char *path, config_t *out) {
                 had_error = 1;
                 continue;
             }
+            if (strcmp(app, "*") == 0) {
+                if (out->has_catch_all) {
+                    log_msg(LOG_ERROR,
+                            "config:%d: only one '*' catch-all mapping is allowed",
+                            line_number);
+                    had_error = 1;
+                    continue;
+                }
+                copy_string(out->catch_all_group,
+                            sizeof(out->catch_all_group), group);
+                out->has_catch_all = 1;
+                continue;
+            }
             if (mapping_exists(out, app)) {
                 log_msg(LOG_WARN,
                         "config:%d: duplicate app '%s' ignored; first mapping wins",
@@ -313,4 +326,15 @@ int config_resolve_group(const config_t *cfg, const char *app_name,
         }
     }
     return 0;
+}
+
+int config_resolve_catch_all(const config_t *cfg, char *out_group,
+                             size_t out_group_sz) {
+    if (!cfg || !out_group || out_group_sz == 0)
+        return -1;
+    if (!cfg->has_catch_all)
+        return 0;
+    if (copy_string(out_group, out_group_sz, cfg->catch_all_group) < 0)
+        return -1;
+    return 1;
 }

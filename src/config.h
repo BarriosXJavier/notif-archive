@@ -4,7 +4,7 @@
 #include <stddef.h>
 
 #define MAX_APPS 32
-#define MAX_APP_NAME 64
+#define MAX_APP_NAME 256
 #define MAX_PATH_LEN 4096
 
 typedef struct {
@@ -19,6 +19,8 @@ typedef struct {
     int screenshot_timeout_ms;
     app_mapping_t apps[MAX_APPS];
     int app_count;
+    char catch_all_group[MAX_APP_NAME];
+    int has_catch_all;
 } config_t;
 
 // Returns 0 on success and -1 if the file cannot be read or contains an
@@ -29,5 +31,9 @@ int config_load(const char *path, config_t *out);
 // 0 when no mapping exists, and -1 when the output buffer is too small.
 int config_resolve_group(const config_t *cfg, const char *app_name,
                          char *out_group, size_t out_group_sz);
+
+// Returns the optional wildcard group configured as "* = Group".
+int config_resolve_catch_all(const config_t *cfg, char *out_group,
+                             size_t out_group_sz);
 
 #endif

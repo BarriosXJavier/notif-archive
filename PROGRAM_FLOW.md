@@ -1,7 +1,7 @@
 ┌─────────────────────┐
                          │       main.c         │
-                         │  parse argv, resolve  │
-                         │   config path         │
+                         │ parse argv: archive   │
+                         │ or --list-apps mode   │
                          └──────────┬───────────┘
                                     │
                                     ▼
@@ -11,7 +11,7 @@
                          │  fills config_t cfg    │     screenshot_delay_ms)
                          └──────────┬───────────┘
                                     │
-                         apps==0? ──┴── fatal, exit 1
+                  no apps/catch-all? ──┴── fatal, exit 1
                                     │
                                     ▼
                          ┌─────────────────────┐
@@ -41,8 +41,8 @@
                     ┌───────────────────────────────┐
                     │   on_message() callback           │
                     │   (bus_listener.c)                 │
-                    │   filter: is this Notify from an   │
-                    │   app in our config's [apps] list? │
+                    │ parse app_name + desktop-entry;   │
+                    │ discover, exact-match, or catch-all│
                     └───────────────┬───────────────┘
                             no ─────┴───── yes
                           (ignore)         │

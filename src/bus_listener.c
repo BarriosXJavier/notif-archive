@@ -16,9 +16,22 @@
 #include <time.h>
 #include <unistd.h>
 
+#define MAX_DISCOVERED_PAIRS 1024
+#define MAX_DISCOVERY_ID_LEN (MAX_APP_NAME - 1)
+#define ESCAPED_DISCOVERY_ID_LEN (MAX_APP_NAME * 6 + 1)
+
+typedef struct discovered_pair {
+    char *app_name;
+    char *desktop_entry;
+    struct discovered_pair *next;
+} discovered_pair_t;
+
 static const config_t *g_cfg;
+static bus_listener_mode_t g_mode;
 static volatile sig_atomic_t g_stop_requested;
 static unsigned long g_screenshot_sequence;
+static discovered_pair_t *g_discovered_pairs;
+static size_t g_discovered_count;
 
 static void handle_stop_signal(int signal_number) {
     (void)signal_number;
@@ -91,10 +104,12 @@ static int read_desktop_entry_hint(sd_bus_message *m, char *out_entry,
                     n = snprintf(out_entry, out_sz, "%s", value);
                     if (n >= 0 && (size_t)n < out_sz)
                         found = 1;
-                    else
+                    else {
+                        out_entry[0] = '\0';
                         log_msg(LOG_WARN,
                                 "desktop-entry hint exceeds %zu-byte limit",
                                 out_sz - 1);
+                    }
                 }
             } else {
                 r = sd_bus_message_skip(m, "v");
@@ -118,10 +133,113 @@ static int read_desktop_entry_hint(sd_bus_message *m, char *out_entry,
 
 done:
     if (sd_bus_message_rewind(m, true) < 0) {
+        out_entry[0] = '\0';
         log_msg(LOG_DEBUG, "failed to rewind malformed Notify message");
         return 0;
     }
+    if (!found)
+        out_entry[0] = '\0';
     return found;
+}
+
+static void free_discovered_pairs(void) {
+    discovered_pair_t *pair = g_discovered_pairs;
+
+    while (pair) {
+        discovered_pair_t *next = pair->next;
+        free(pair->app_name);
+        free(pair->desktop_entry);
+        free(pair);
+        pair = next;
+    }
+    g_discovered_pairs = NULL;
+    g_discovered_count = 0;
+}
+
+static void escape_discovery_identity(const char *input, char *output,
+                                      size_t output_size) {
+    static const char hex[] = "0123456789ABCDEF";
+    size_t j = 0;
+
+    for (size_t i = 0; input[i] != '\0' && j + 1 < output_size; i++) {
+        unsigned char c = (unsigned char)input[i];
+
+        if (c == '\\' || c == '\'') {
+            if (j + 2 >= output_size)
+                break;
+            output[j++] = '\\';
+            output[j++] = (char)c;
+        } else if (c == '\n' || c == '\r' || c == '\t') {
+            if (j + 2 >= output_size)
+                break;
+            output[j++] = '\\';
+            output[j++] = c == '\n' ? 'n' : (c == '\r' ? 'r' : 't');
+        } else if (c < 0x20 || c == 0x7f) {
+            if (j + 6 >= output_size)
+                break;
+            output[j++] = '\\';
+            output[j++] = 'u';
+            output[j++] = '0';
+            output[j++] = '0';
+            output[j++] = hex[c >> 4];
+            output[j++] = hex[c & 0x0f];
+        } else {
+            output[j++] = (char)c;
+        }
+    }
+    output[j] = '\0';
+}
+
+static void remember_discovered_pair(const char *app_name,
+                                     const char *desktop_entry) {
+    discovered_pair_t *pair;
+
+    if (strlen(app_name) > MAX_DISCOVERY_ID_LEN ||
+        strlen(desktop_entry) > MAX_DISCOVERY_ID_LEN) {
+        log_msg(LOG_WARN,
+                "DISCOVER identity exceeds %d bytes and cannot be tracked",
+                MAX_DISCOVERY_ID_LEN);
+        return;
+    }
+    for (pair = g_discovered_pairs; pair; pair = pair->next) {
+        if (strcmp(pair->app_name, app_name) == 0 &&
+            strcmp(pair->desktop_entry, desktop_entry) == 0)
+            return;
+    }
+    if (g_discovered_count >= MAX_DISCOVERED_PAIRS) {
+        log_msg(LOG_WARN,
+                "DISCOVER pair limit (%d) reached; ignoring new identities",
+                MAX_DISCOVERED_PAIRS);
+        return;
+    }
+
+    pair = calloc(1, sizeof(*pair));
+    if (!pair)
+        goto allocation_failed;
+    pair->app_name = strdup(app_name);
+    pair->desktop_entry = strdup(desktop_entry);
+    if (!pair->app_name || !pair->desktop_entry) {
+        free(pair->app_name);
+        free(pair->desktop_entry);
+        free(pair);
+        goto allocation_failed;
+    }
+    pair->next = g_discovered_pairs;
+    g_discovered_pairs = pair;
+    g_discovered_count++;
+    {
+        char escaped_app[ESCAPED_DISCOVERY_ID_LEN];
+        char escaped_desktop[ESCAPED_DISCOVERY_ID_LEN];
+        escape_discovery_identity(app_name, escaped_app, sizeof(escaped_app));
+        escape_discovery_identity(desktop_entry, escaped_desktop,
+                                  sizeof(escaped_desktop));
+        log_msg(LOG_INFO, "DISCOVER app_name='%s' desktop-entry='%s'",
+                escaped_app, escaped_desktop);
+    }
+    return;
+
+allocation_failed:
+    log_msg(LOG_ERROR, "DISCOVER cannot allocate identity tracking entry");
 }
 
 static int build_screenshot_path(const char *dir, const struct timespec *event_time,
@@ -138,12 +256,13 @@ static int on_message(sd_bus_message *m, void *userdata,
     const char *app_icon = NULL;
     const char *summary = NULL;
     const char *body = NULL;
-    const char *interface;
-    const char *member;
+    const char *resolved_source;
     uint32_t replaces_id = 0;
+    char desktop_entry[MAX_DISCOVERY_ID_LEN + 1];
     char group_name[MAX_APP_NAME];
-    char resolved_source[MAX_APP_NAME];
     int matched;
+    int has_desktop_entry;
+    int used_catch_all = 0;
     int r;
 
     (void)userdata;
@@ -152,11 +271,6 @@ static int on_message(sd_bus_message *m, void *userdata,
     if (!sd_bus_message_is_method_call(m, "org.freedesktop.Notifications",
                                        "Notify"))
         return 1;
-    interface = sd_bus_message_get_interface(m);
-    member = sd_bus_message_get_member(m);
-    if (!interface || !member)
-        return 1;
-
     r = sd_bus_message_read(m, "susss", &app_name, &replaces_id, &app_icon,
                             &summary, &body);
     if (r <= 0 || !app_name || !summary || !body) {
@@ -164,40 +278,56 @@ static int on_message(sd_bus_message *m, void *userdata,
         return 1;
     }
 
+    desktop_entry[0] = '\0';
+    has_desktop_entry =
+        read_desktop_entry_hint(m, desktop_entry, sizeof(desktop_entry));
+    if (!has_desktop_entry)
+        desktop_entry[0] = '\0';
+    if (g_mode == BUS_LISTENER_DISCOVER) {
+        remember_discovered_pair(app_name, desktop_entry);
+        return 1;
+    }
+
     matched = config_resolve_group(g_cfg, app_name, group_name,
                                    sizeof(group_name));
-    if (matched < 0) {
-        log_msg(LOG_ERROR, "configured group name does not fit output buffer");
-        return 1;
-    }
+    if (matched < 0)
+        goto group_too_long;
+    resolved_source = app_name;
 
-    r = snprintf(resolved_source, sizeof(resolved_source), "%s", app_name);
-    if (r < 0 || (size_t)r >= sizeof(resolved_source))
-        resolved_source[0] = '\0';
+    if (!matched && has_desktop_entry) {
+        log_msg(LOG_DEBUG,
+                "unmatched app_name='%s', desktop-entry hint='%s'", app_name,
+                desktop_entry);
+        matched = config_resolve_group(g_cfg, desktop_entry, group_name,
+                                       sizeof(group_name));
+        if (matched < 0)
+            goto group_too_long;
+        if (matched)
+            resolved_source = desktop_entry;
+    }
 
     if (!matched) {
-        char desktop_entry[MAX_APP_NAME];
-
-        if (read_desktop_entry_hint(m, desktop_entry, sizeof(desktop_entry))) {
-            log_msg(LOG_DEBUG,
-                    "unmatched app_name='%s', desktop-entry hint='%s'", app_name,
-                    desktop_entry);
-            matched = config_resolve_group(g_cfg, desktop_entry, group_name,
+        matched = config_resolve_catch_all(g_cfg, group_name,
                                            sizeof(group_name));
-            if (matched < 0) {
-                log_msg(LOG_ERROR,
-                        "configured group name does not fit output buffer");
-                return 1;
-            }
-            if (matched) {
-                snprintf(resolved_source, sizeof(resolved_source), "%s",
-                         desktop_entry);
-            }
+        if (matched < 0)
+            goto group_too_long;
+        if (matched) {
+            used_catch_all = 1;
+            if (app_name[0] == '\0' && has_desktop_entry)
+                resolved_source = desktop_entry;
+            else if (app_name[0] == '\0')
+                resolved_source = "<unknown>";
         }
     }
-
     if (!matched)
         return 1;
+
+    if (used_catch_all) {
+        log_msg(LOG_WARN,
+                "catch-all matched app_name='%s' desktop-entry='%s' group='%s'; "
+                "add an explicit mapping",
+                app_name, desktop_entry, group_name);
+    }
 
     {
         struct timespec event_time;
@@ -225,13 +355,17 @@ static int on_message(sd_bus_message *m, void *userdata,
         }
 
         got_screenshot = screenshot_capture(g_cfg, screenshot_path,
-                                                    &g_stop_requested);
+                                            &g_stop_requested);
         parser_split(summary, body, &parsed);
         storage_write_entry(dir, group_name, resolved_source, replaces_id,
                             event_time.tv_sec, &parsed,
                             got_screenshot ? screenshot_path : NULL);
     }
 
+    return 1;
+
+group_too_long:
+    log_msg(LOG_ERROR, "configured group name does not fit output buffer");
     return 1;
 }
 
@@ -361,12 +495,17 @@ static void reconnect_delay(unsigned int seconds) {
         ;
 }
 
-int bus_listener_run(const config_t *cfg) {
+int bus_listener_run(const config_t *cfg, bus_listener_mode_t mode) {
     char address[MAX_PATH_LEN];
     int consecutive_failures = 0;
+    int result = 0;
 
+    if (mode == BUS_LISTENER_ARCHIVE && !cfg)
+        return 1;
     g_cfg = cfg;
+    g_mode = mode;
     g_stop_requested = 0;
+    free_discovered_pairs();
     if (install_signal_handlers() < 0)
         return 1;
     if (resolve_session_address(address, sizeof(address)) < 0) {
@@ -385,7 +524,8 @@ int bus_listener_run(const config_t *cfg) {
                 log_msg(LOG_ERROR,
                         "giving up after %d consecutive failed connection attempts",
                         consecutive_failures);
-                return 1;
+                result = 1;
+                break;
             }
             log_msg(LOG_WARN, "retrying bus connection in 3s (attempt %d/5)",
                     consecutive_failures);
@@ -393,8 +533,14 @@ int bus_listener_run(const config_t *cfg) {
             continue;
         }
         consecutive_failures = 0;
-        log_msg(LOG_INFO, "listening for notifications from %d configured app(s)",
-                cfg->app_count);
+        if (mode == BUS_LISTENER_DISCOVER) {
+            log_msg(LOG_INFO,
+                    "discovery mode active; trigger notifications and press Ctrl-C to stop");
+        } else {
+            log_msg(LOG_INFO,
+                    "listening for %d configured app(s)%s", cfg->app_count,
+                    cfg->has_catch_all ? " plus catch-all" : "");
+        }
 
         while (!g_stop_requested) {
             r = sd_bus_process(bus, NULL);
@@ -408,8 +554,8 @@ int bus_listener_run(const config_t *cfg) {
             if (r > 0)
                 continue;
             // A finite wait closes the signal lost-wakeup window: even if
-                        // SIGTERM lands just before this call, shutdown is noticed within 250 ms.
-                        r = sd_bus_wait(bus, 250000);
+            // SIGTERM lands just before this call, shutdown is noticed quickly.
+            r = sd_bus_wait(bus, 250000);
             if (r < 0) {
                 if (r == -EINTR && g_stop_requested)
                     break;
@@ -424,6 +570,8 @@ int bus_listener_run(const config_t *cfg) {
             reconnect_delay(1);
     }
 
-    log_msg(LOG_INFO, "shutdown requested; listener stopped cleanly");
-    return 0;
+    if (g_stop_requested)
+        log_msg(LOG_INFO, "shutdown requested; listener stopped cleanly");
+    free_discovered_pairs();
+    return result;
 }
