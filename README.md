@@ -144,6 +144,34 @@ To inspect logs:
 journalctl --user -u notif-archiver -f
 ```
 
+## Smoke testing with fake notifications
+
+The repository includes `scripts/smoke-test.sh` for testing the full notification pipeline without waiting for real messages.
+
+Run it from an active graphical desktop session:
+
+```sh
+./scripts/smoke-test.sh
+```
+
+The script:
+
+1. creates a temporary config and archive directory,
+2. builds `notif-archiver` if the binary is missing,
+3. starts a temporary archiver process,
+4. sends one direct-message notification and one group-message notification with `notify-send`,
+5. verifies that both records were written to `log.jsonl`, and
+6. removes the temporary files after a successful run.
+
+If the test fails, it keeps its temporary directory and prints the path so you can inspect the archiver log and any partial archive output.
+
+The smoke test requires `notify-send`, normally provided by:
+
+- Debian/Ubuntu: `libnotify-bin`
+- Fedora/Arch Linux: `libnotify`
+
+Because this is an end-to-end test, it must run inside the same Linux graphical user session whose D-Bus carries desktop notifications. It will briefly display two test notifications. Screenshot failure does not fail the smoke test; the test verifies notification capture, parsing, and JSONL storage.
+
 ## Configuration
 
 The config parser supports simple `key=value` entries plus an `[apps]` section.

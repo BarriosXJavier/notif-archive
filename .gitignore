@@ -4,6 +4,7 @@ src/*.o
 /src/*.d
 /build
 test_parser
+/test_parser.d
 
 # Editor /
 .DS_Store
