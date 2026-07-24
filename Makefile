@@ -4,9 +4,9 @@ CC ?= cc
 # Build configuration
 CPPFLAGS := $(shell pkg-config --cflags libsystemd)
 CFLAGS   := -std=c11 -Wall -Wextra -O2 -MMD -MP
-LDFLAGS  :=
-LDLIBS   := $(shell pkg-config --libs libsystemd)
-
+CPPFLAGS := $(shell pkg-config --cflags libsystemd libpq)
+LDFLAGS += $(shell pkg-config --libs libpq)
+LDLIBS   := $(shell pkg-config --libs libsystemd libpq)
 # Project
 BIN := notif-archiver
 
@@ -16,6 +16,7 @@ SRC := \
 	src/bus_listener.c \
 	src/parser.c \
 	src/storage.c \
+	src/storage_pg.c \
 	src/screenshot.c \
 	src/log.c
 
