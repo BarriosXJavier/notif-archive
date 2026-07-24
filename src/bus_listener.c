@@ -427,61 +427,47 @@ static int connect_via_monitor(const char *address, sd_bus **out_bus) {
       "interface='org.freedesktop.Notifications',member='Notify'";
   int r;
   r = sd_bus_new(&bus);
-  log_msg(LOG_DEBUG, "sd_bus_new: %d", r);
   if (r < 0)
     return r;
   r = sd_bus_set_bus_client(bus, true);
-  log_msg(LOG_DEBUG, "sd_bus_set_bus_client: %d", r);
   if (r < 0)
     goto fail;
   r = sd_bus_negotiate_creds(bus, true, SD_BUS_CREDS_WELL_KNOWN_NAMES);
-  log_msg(LOG_DEBUG, "sd_bus_negotiate_creds: %d", r);
   if (r < 0)
     goto fail;
   r = sd_bus_negotiate_timestamp(bus, true);
-  log_msg(LOG_DEBUG, "sd_bus_negotiate_timestamp: %d", r);
   if (r < 0)
     goto fail;
   r = sd_bus_negotiate_fds(bus, true);
-  log_msg(LOG_DEBUG, "sd_bus_negotiate_fds: %d", r);
   if (r < 0)
     goto fail;
   r = sd_bus_set_monitor(bus, true);
-  log_msg(LOG_DEBUG, "sd_bus_set_monitor: %d", r);
   if (r < 0)
     goto fail;
   r = sd_bus_set_address(bus, address);
-  log_msg(LOG_DEBUG, "sd_bus_set_address: %d", r);
   if (r < 0)
     goto fail;
   r = sd_bus_start(bus);
-  log_msg(LOG_DEBUG, "sd_bus_start: %d", r);
   if (r < 0)
     goto fail;
   r = sd_bus_add_filter(bus, NULL, on_message, NULL);
-  log_msg(LOG_DEBUG, "sd_bus_add_filter: %d", r);
   if (r < 0)
     goto fail;
   r = sd_bus_message_new_method_call(
       bus, &call, "org.freedesktop.DBus", "/org/freedesktop/DBus",
       "org.freedesktop.DBus.Monitoring", "BecomeMonitor");
-  log_msg(LOG_DEBUG, "sd_bus_message_new_method_call: %d", r);
   if (r < 0)
     goto fail;
   r = sd_bus_message_open_container(call, 'a', "s");
-  log_msg(LOG_DEBUG, "sd_bus_message_open_container: %d", r);
   if (r < 0)
     goto fail_msg;
   r = sd_bus_message_append(call, "s", rule);
-  log_msg(LOG_DEBUG, "sd_bus_message_append rule: %d", r);
   if (r < 0)
     goto fail_msg;
   r = sd_bus_message_close_container(call);
-  log_msg(LOG_DEBUG, "sd_bus_message_close_container: %d", r);
   if (r < 0)
     goto fail_msg;
   r = sd_bus_message_append(call, "u", (uint32_t)0);
-  log_msg(LOG_DEBUG, "sd_bus_message_append flags: %d", r);
   if (r < 0)
     goto fail_msg;
   r = sd_bus_call(bus, call, 0, &error, &reply);
