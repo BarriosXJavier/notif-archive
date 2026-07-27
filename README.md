@@ -60,6 +60,8 @@ To run the archiver successfully, the system should already have:
 - at least one supported screenshot tool installed,
 - the target apps configured in `notif-archiver.conf` and sending standard desktop notifications.
 
+- **Note that the target apps must have the message preview enabled**
+
 Supported screenshot tools:
 
 - Wayland: `grim` or `gnome-screenshot`
