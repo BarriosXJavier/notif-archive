@@ -8,19 +8,26 @@
 #define MAX_PATH_LEN 4096
 
 typedef struct {
-    char app_name[MAX_APP_NAME];
-    char group_name[MAX_APP_NAME];
+  char app_name[MAX_APP_NAME];
+  char group_name[MAX_APP_NAME];
 } app_mapping_t;
 
 typedef struct {
-    char archive_root[MAX_PATH_LEN];
-    char session_type[16];
-    int screenshot_delay_ms;
-    int screenshot_timeout_ms;
-    app_mapping_t apps[MAX_APPS];
-    int app_count;
-    char catch_all_group[MAX_APP_NAME];
-    int has_catch_all;
+  char archive_root[MAX_PATH_LEN];
+  char session_type[16];
+  int screenshot_delay_ms;
+  int screenshot_timeout_ms;
+  app_mapping_t apps[MAX_APPS];
+  int app_count;
+  char catch_all_group[MAX_APP_NAME];
+  int has_catch_all;
+
+  // Postgres connection info
+  int pg_enabled;
+  char pg_host[128];
+  char pg_port[8];
+  char pg_dbname[128];
+  char pg_user[128];
 } config_t;
 
 // Returns 0 on success and -1 if the file cannot be read or contains an

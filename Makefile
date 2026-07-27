@@ -56,11 +56,11 @@ test_screenshot: tests/test_screenshot.c src/screenshot.c src/log.c
 
 install: $(BIN)
 	install -Dm755 $(BIN) $(PREFIX)/bin/$(BIN)
-	install -Dm644 config/notif-archiver.conf \
-		$(HOME)/.config/notif-archiver/notif-archiver.conf
+	test -f $(HOME)/.config/notif-archiver/notif-archiver.conf || \
+		install -Dm644 config/notif-archiver.conf \
+			$(HOME)/.config/notif-archiver/notif-archiver.conf
 	install -Dm644 systemd/notif-archiver.service \
 		$(HOME)/.config/systemd/user/notif-archiver.service
-
 enable:
 	systemctl --user daemon-reload
 	systemctl --user enable --now notif-archiver.service
